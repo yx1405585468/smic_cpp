@@ -4,48 +4,54 @@
 using namespace std;
 
 
-// 1. LoopEWMA 父类
-class LoopEWMA {
+// 1. RecursionEWMA类
+class RecursionEWMA {
 public:
 
     // 类成员变量
-    Eigen::Array<Eigen::MatrixXd, -1, -1> U;
-    Eigen::Array<Eigen::MatrixXd, -1, -1> Y;
+    Eigen::MatrixXd Ut_1;
+    Eigen::MatrixXd Yt;
     Eigen::MatrixXd A0;
     Eigen::MatrixXd B0;
-    Eigen::VectorXd target;
-    double lamda1 = 0.2;
-    bool decay = false;
-    int t = 0;
-    Eigen::VectorXd lb;
-    Eigen::VectorXd ub;
-    string control = "intercept";
-    string type = "ewma";
-    int p;
-    int m;
+    Eigen::MatrixXd At_1;
+    Eigen::MatrixXd Bt_1;
     Eigen::MatrixXd At;
     Eigen::MatrixXd Bt;
     Eigen::MatrixXd Ut;
+    Eigen::VectorXd target;
+    Eigen::VectorXd lb;
+    Eigen::VectorXd ub;
+    int t = 0;
+    int p;
+    int m;
+    int T = 15;
+    double lamda1 = 0.2;
+    bool decay = false;
+    string type = "ewma";
+    string control = "intercept";
+
 
     // 构造函数 + 代码审查
-    LoopEWMA(
-            Eigen::Array<Eigen::MatrixXd, -1, -1> U_,
-            Eigen::Array<Eigen::MatrixXd, -1, -1> Y_,
+    RecursionEWMA(
+            Eigen::MatrixXd Ut_1_,
+            Eigen::MatrixXd Yt_,
             Eigen::VectorXd target_,
             double lamda1_,
             Eigen::MatrixXd A0_,
             Eigen::MatrixXd B0_,
             string control_,
-            string type_,
             bool decay_,
             int t_,
             Eigen::VectorXd lb_,
-            Eigen::VectorXd ub_) {
+            Eigen::VectorXd ub_,
+            Eigen::MatrixXd At_1_,
+            Eigen::MatrixXd Bt_1_
+    ) {
 
 
         // U、Y、target审查
-        if (U_.size() == 0 || Y_.size() == 0 || target_.size() == 0) {
-            throw "U 或 Y 或 target 不能为空！";
+        if (Ut_1_.size() == 0 || Yt_.size() == 0 || target_.size() == 0) {
+            throw "Ut_1 或 Yt 或 target 不能为空！";
         }
         if (target_.size() == 1) {
             cout << "请根据Y(0).size()的值，构造对应维度的target同值向量或矩阵。" << endl;
@@ -57,12 +63,14 @@ public:
             throw "control参数不合法！";
         }
         if (control_ == "i" || control_ == "intercept") {
-            if (B0_.size() == 0) {
-                throw "当control为'i'或'intercept'时，B0不能为空";
+            if (B0_.size() == 0 || At_1_.size() == 0) {
+                throw "当control为'i'或'intercept'时，B0或At_1不能为空";
             }
         } else {
-            if (A0_.size() == 0) {
-                throw "当control为's'或'slope'时，A0不能为空";
+            if (A0_.size() == 0 || Bt_1_.size() == 0) {
+                throw "当control为's'或'slope'时，A0或Bt_1不能为空";
+            } else if (A0_.size() != Yt_.size()) {
+                throw "当control为's'或'slope'时，A0与Yt的尺寸必须一致";
             }
         }
 
@@ -73,8 +81,10 @@ public:
 
 
         // 参数初始化
-        U = U_;
-        Y = Y_;
+        Ut_1 = Ut_1_;
+        Yt = Yt_;
+        At_1 = At_1_;
+        Bt_1 = Bt_1_;
         A0 = A0_;
         B0 = B0_;
         target = target_;
@@ -84,12 +94,10 @@ public:
         lb = lb_;
         ub = ub_;
         control = control_;
-        type = type_;
-        p = int(Y_(0).rows());
-        m = int(U_(0).rows());
+        p = int(Yt_.rows());
+        m = int(Ut_1_.rows());
 
     }
-
 
     // 函数：ewma
     Eigen::MatrixXd ewma(Eigen::Array<Eigen::MatrixXd, -1, -1> data_list, double lamda) {
@@ -185,13 +193,13 @@ public:
 
     // 函数：intercept_update
     Eigen::MatrixXd intercept_update() {
-        int row = int(U.rows());
-        Eigen::Array<Eigen::MatrixXd, -1, 1> data_list;
-        data_list.resize(row, 1);
-        for (int i = 0; i < row; i++) {
-            data_list(i) = Y(i) - B0 * U(i);
+        double t_lamda;
+        if (decay) {
+            t_lamda = lamda1 * exp(-t / T);
+        } else {
+            t_lamda = lamda1;
         }
-        At = select(data_list, lamda1);
+        Eigen::MatrixXd At = t_lamda * (Yt - B0 * Ut_1) + (1 - t_lamda) * At_1;
         return At;
 
     }
@@ -199,15 +207,43 @@ public:
 
     // 函数：slope_update()
     Eigen::MatrixXd slope_update() {
-        int row = int(U.rows());
-        Eigen::Array<Eigen::MatrixXd, -1, 1> data_list;
-        data_list.resize(row, 1);
-        for (int i = 0; i < row; i++) {
-            Eigen::MatrixXd B_1 = (Y(i) - A0) * U(i).transpose();
-            Eigen::MatrixXd B_2 = (U(i) * U(i).transpose() + 0.001 * Eigen::MatrixXd::Identity(m, m)).inverse();
-            data_list(i) = B_1 * B_2;
+        double t_lamda;
+        if (decay) {
+            t_lamda = lamda1 * exp(-t / T);
+        } else {
+            t_lamda = lamda1;
         }
-        Bt = select(data_list, lamda1);
+
+        Eigen::MatrixXd B_1 = (Yt - A0) * Ut_1.transpose();
+
+        Eigen::MatrixXd B_2 = (Ut_1 * Ut_1.transpose() + 0.001 * Eigen::MatrixXd::Identity(m, m)).inverse();
+
+        Eigen::MatrixXd B_ = t_lamda * (B_1 * B_2);
+
+        Eigen::MatrixXd C_ = (1 - t_lamda) * Bt_1;
+        if (C_.size() == B_.size()) {
+            Bt = B_ + C_;
+        } else {
+            if (B_.cols() != C_.cols()) {
+                Eigen::MatrixXd CL(B_.rows(), B_.cols());
+                for (int i = 0; i < B_.rows(); i++) {
+                    for (int j = 0; j < B_.cols(); j++) {
+                        CL(i, j) = C_(i, 0);
+                    }
+                }
+                Bt = B_ + CL;
+            } else {
+                Eigen::MatrixXd CL(B_.rows(), B_.cols());
+                for (int i = 0; i < B_.rows(); i++) {
+                    for (int j = 0; j < B_.cols(); j++) {
+                        CL(i, j) = C_(0, j);
+                    }
+                }
+                Bt = B_ + CL;
+            }
+
+
+        }
         return Bt;
 
     }
@@ -261,13 +297,13 @@ public:
             // 利用拉格朗日乘子离线求解
             if (ub.size() == 0 && lb.size() == 0) {
                 Eigen::MatrixXd u1 = (Bt * Bt.transpose()).inverse();
-                Eigen::MatrixXd u2 = Bt * U(U.rows() - 1) - target + At;
-                Ut = U(U.rows() - 1) - (Bt.transpose() * u1 * u2);
+                Eigen::MatrixXd u2 = Bt * Ut_1 - target + At;
+                Ut = Ut_1 - (Bt.transpose() * u1 * u2);
                 cout << "p < m,无约束，拉格朗日乘子法========================================================" << endl;
             } else {
                 // 二次规划求解,小数点后第二位之后，对不上
                 Eigen::MatrixXd H = Eigen::MatrixXd::Identity(m, m);
-                Eigen::MatrixXd f = -U(U.rows() - 1);
+                Eigen::MatrixXd f = -Ut_1;
                 Eigen::MatrixXd L = Eigen::MatrixXd::Identity(m, m);
                 Eigen::MatrixXd k = ub;
                 Eigen::MatrixXd Aeq = Bt;
@@ -288,20 +324,17 @@ public:
 
     // 函数：run
     map <string, Eigen::MatrixXd> run() {
+        Eigen::MatrixXd None;
         map <string, Eigen::MatrixXd> result;
         if (control == "intercept" || control == "i") {
             At = intercept_update();
             Ut = cal_recipe(At, B0);
-            cout << "At" << endl << At << endl << "Ut" << endl << Ut << endl;
-            Eigen::MatrixXd None;
             result["recipe"] = Ut;
             result["At"] = At;
             result["Bt"] = None;
         } else {
             Bt = slope_update();
             Ut = cal_recipe(A0, Bt);
-            cout << "Bt" << endl << Bt << endl << "Ut" << endl << Ut << endl;
-            Eigen::MatrixXd None;
             result["recipe"] = Ut;
             result["At"] = None;
             result["Bt"] = Bt;
@@ -312,36 +345,33 @@ public:
 
 
 // 2. 测试案例
-void test_ewma() {
+void test_rewma() {
 
     // 定义None值
-    Eigen::Array<Eigen::MatrixXd, 0, 0> V;
+    Eigen::MatrixXd None;
     //cout << "向量V的None值：" << V.size() << endl; // 打印结果为0
 
 
-    // 配置U,Y矩阵数组
-    Eigen::Array<Eigen::MatrixXd, 3, 1> U; // 前n次的输入
-    Eigen::Array<Eigen::MatrixXd, 3, 1> Y; // 前n次的量测值
-    U(0) = Eigen::MatrixXd{{0.0},
-                           {0.0}};
-    U(1) = Eigen::MatrixXd{{-0.622},
-                           {-1.421}};
-    U(2) = Eigen::MatrixXd{{-1.099},
-                           {-2.198}};
-    Y(0) = Eigen::MatrixXd{{1.831},
-                           {3.216}};
-    Y(1) = Eigen::MatrixXd{{1.047},
-                           {1.453}};
-    Y(2) = Eigen::MatrixXd{{0.714},
-                           {-1.381}};
+    // 配置Ut_1,Yt矩阵数组
+    Eigen::MatrixXd Ut_1(2, 1); // 前1次的输入
+    Eigen::MatrixXd Yt(2, 1); // 前1次的量测值
+    Ut_1 << -0.622, -1.421;
+    Yt << 1.047, 1.453;
+
+
+    // 配置At_1,Bt_1矩阵数组
+    Eigen::MatrixXd At_1(2, 1); // 前1次的输入
+    Eigen::MatrixXd Bt_1(2, 1); // 前1次的量测值
+    At_1 << 0.363, 0.643;
+    Bt_1 << 0.363, 0.643;
 
 
     // 配置A0,B0矩阵
-    Eigen::MatrixXd A0{ // 初始截距，有DOE和回归技术估计获得
+    Eigen::MatrixXd A0{
             {1.0},
             {0.3}
     };
-    Eigen::MatrixXd B0{ // 初始斜率，有DOE和回归技术估计获得
+    Eigen::MatrixXd B0{
             {1.0, 0.2},
             {0.3, 1.0}
     };
@@ -354,7 +384,7 @@ void test_ewma() {
 
     // 配置其他参数
     double lamda1 = 0.2;  // 当前截距/斜率的权重因子
-    bool decay = true;  // 衰减权重因子
+    bool decay = false;  // 衰减权重因子
 
 
     // 配置运行次数
@@ -369,13 +399,12 @@ void test_ewma() {
 
 
     // 配置更新方式和ewma类型
-    string control = "i";  // 可选截距更新或者斜率更新
-    string type = "ewma";  // 可选ewma和ss-ewma
+    string control = "s";  // 可选截距更新或者斜率更新
 
 
     // 运行
-    LoopEWMA loopewma(U, Y, target, lamda1, A0, B0, control, type, decay, t, lb, ub); //必须全部输入
-    map <string, Eigen::MatrixXd> result = loopewma.run();
+    RecursionEWMA recursionewma(Ut_1, Yt, target, lamda1, A0, B0, control, decay, t, lb, ub, At_1, Bt_1);
+    map <string, Eigen::MatrixXd> result = recursionewma.run();
     cout << "********************************* result ***************************************" << endl;
     cout << "recipe：" << endl << result["recipe"] << endl;
     cout << "At：" << endl << result["At"] << endl;

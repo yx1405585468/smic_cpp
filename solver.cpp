@@ -1,10 +1,9 @@
-//三元组代码
 #include <iostream>
 #include <Eigen/Dense>
 #include "OsqpEigen/OsqpEigen.h"
 
 
-// 1. 定义、实现QPST求解器
+// 1. 定义QPST求解器
 Eigen::VectorXd OSQP_solver( //返回的是向量
         Eigen::SparseMatrix<double, Eigen::ColMajor, int> P, Eigen::VectorXd q,
         Eigen::SparseMatrix<double, Eigen::ColMajor, int> G, Eigen::VectorXd lb, Eigen::VectorXd ub) {
@@ -42,21 +41,21 @@ Eigen::VectorXd OSQP_solver( //返回的是向量
 }
 
 
-// 2. 制造测试数据，测试求解器函数
-int test() {
+// 2. 测试案例
+void test_solver() {
 
 
     //设置P矩阵
-    std::vector<Eigen::Triplet < double>>
-    HList = { Eigen::Triplet<double>(0, 0, 1),
-              Eigen::Triplet<double>(0, 1, -1),
-              Eigen::Triplet<double>(0, 2, 1),
-              Eigen::Triplet<double>(1, 0, -1),
-              Eigen::Triplet<double>(1, 1, 2),
-              Eigen::Triplet<double>(1, 2, -2),
-              Eigen::Triplet<double>(2, 0, 1),
-              Eigen::Triplet<double>(2, 1, -2),
-              Eigen::Triplet<double>(2, 2, 4) };
+    std::vector <Eigen::Triplet<double>>
+            HList = {Eigen::Triplet<double>(0, 0, 1),
+                     Eigen::Triplet<double>(0, 1, -1),
+                     Eigen::Triplet<double>(0, 2, 1),
+                     Eigen::Triplet<double>(1, 0, -1),
+                     Eigen::Triplet<double>(1, 1, 2),
+                     Eigen::Triplet<double>(1, 2, -2),
+                     Eigen::Triplet<double>(2, 0, 1),
+                     Eigen::Triplet<double>(2, 1, -2),
+                     Eigen::Triplet<double>(2, 2, 4)};
     Eigen::SparseMatrix<double, Eigen::ColMajor, int> P(3, 3);
     P.setFromTriplets(HList.begin(), HList.end());
     std::cout << "矩阵P:" << std::endl << P << std::endl;
@@ -67,8 +66,8 @@ int test() {
     std::cout << "向量q:" << std::endl << q << std::endl;
 
     //设置G矩阵
-    std::vector<Eigen::Triplet < double>>
-    CList = {
+    std::vector <Eigen::Triplet<double>>
+            CList = {
             Eigen::Triplet<double>(0, 0, 1),
             Eigen::Triplet<double>(0, 1, 0),
             Eigen::Triplet<double>(0, 2, 0),
@@ -80,7 +79,7 @@ int test() {
             Eigen::Triplet<double>(2, 2, 1),
             Eigen::Triplet<double>(3, 0, 1),
             Eigen::Triplet<double>(3, 1, 1),
-            Eigen::Triplet<double>(3, 2, 1) };
+            Eigen::Triplet<double>(3, 2, 1)};
     Eigen::SparseMatrix<double, Eigen::ColMajor, int> G(4, 3);
     G.setFromTriplets(CList.begin(), CList.end());
     std::cout << "不等约束的矩阵G：\n" << G << std::endl;
@@ -99,5 +98,4 @@ int test() {
     Eigen::VectorXd QPSolution;
     QPSolution = OSQP_solver(P, q, G, lb, ub);
     std::cout << "QPSolution:" << std::endl << QPSolution << std::endl;
-    return 0;
 }
